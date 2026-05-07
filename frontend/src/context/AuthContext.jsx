@@ -21,13 +21,23 @@ export function AuthProvider({ children }) {
     return res.data
   }
 
+  const googleLogin = async (idToken) => {
+    const res = await authService.googleLogin(idToken)
+    const { access_token, user: userData } = res.data.data
+    localStorage.setItem('token', access_token)
+    localStorage.setItem('user', JSON.stringify(userData))
+    setToken(access_token)
+    setUser(userData)
+    return userData
+  }
+
   const logout = async () => {
     try { await authService.logout() } catch (_) {}
     localStorage.removeItem('token'); localStorage.removeItem('user')
     setToken(null); setUser(null)
   }
 
-  return <AuthContext.Provider value={{ user, token, login, register, logout, isAdmin: user?.role === 'admin' }}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={{ user, token, login, googleLogin, register, logout, isAdmin: user?.role === 'admin' }}>{children}</AuthContext.Provider>
 }
 
 export const useAuth = () => {

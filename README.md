@@ -1,217 +1,199 @@
-# ⚡ PrimeTrade Task API
+# 💸 PrimePay — Freelancer Invoice & Payments Platform
 
-A production-grade REST API with JWT authentication, role-based access control, Redis caching, and a React frontend — all running in Docker with one command.
+A production-grade SaaS API for Indian freelancers to manage clients, track time, auto-generate invoices, and collect payments via Razorpay.
 
----
-
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Backend | FastAPI (Python 3.12) |
-| Database | PostgreSQL 16 |
-| Cache / Token Blacklist | Redis 7 |
-| Frontend | React 18 + Vite |
-| Auth | JWT + bcrypt |
-| Containerization | Docker + Docker Compose |
-| Testing | pytest + httpx |
-| API Docs | Swagger UI (auto-generated) |
+![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688?logo=fastapi&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
+![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
 
 ---
 
-## Project Structure
+## 🎯 Features
+
+| Feature | Description |
+|:---|:---|
+| **JWT Authentication** | Register/login with Redis-backed token blacklisting |
+| **Client Management** | CRUD with multi-tenant data isolation |
+| **Time Tracking** | Server-side start/stop timer with automatic status transitions |
+| **Auto-Invoicing** | Invoice auto-generated on task completion (if client + rate set) |
+| **Razorpay Payments** | Order creation, checkout popup, HMAC webhook verification |
+| **Redis Caching** | 5-minute cache with automatic invalidation on mutations |
+| **Alembic Migrations** | Versioned database schema management |
+| **Admin Panel** | Role-based access control for admin users |
+
+---
+
+## 🏗️ Architecture
 
 ```
-primetrade-api/
-├── docker-compose.yml
-├── README.md
-├── SCALABILITY.md
-├── backend/
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   └── app/
-│       ├── main.py               # FastAPI entry point, CORS, logging
-│       ├── core/
-│       │   ├── config.py         # Settings from env variables
-│       │   ├── database.py       # SQLAlchemy engine + session
-│       │   ├── security.py       # bcrypt hashing + JWT
-│       │   └── redis.py          # Caching + token blacklist
-│       ├── models/
-│       │   ├── user.py           # Users table
-│       │   └── task.py           # Tasks table
-│       ├── schemas/
-│       │   ├── user.py           # Request/response validation
-│       │   ├── task.py           # Task schemas
-│       │   └── common.py         # APIResponse wrapper
-│       ├── services/
-│       │   ├── auth_service.py   # Register, login, logout logic
-│       │   └── task_service.py   # CRUD + Redis caching
-│       └── api/v1/
-│           ├── auth.py           # Auth routes
-│           ├── tasks.py          # Task CRUD routes
-│           ├── admin.py          # Admin routes
-│           └── deps.py           # Auth dependencies
-└── frontend/
-    ├── Dockerfile
-    ├── nginx.conf
-    └── src/
-        ├── App.jsx               # Router + protected routes
-        ├── context/AuthContext.jsx
-        ├── services/api.js       # Axios API calls
-        └── pages/
-            ├── Login.jsx
-            ├── Register.jsx
-            ├── Dashboard.jsx     # Task manager UI
-            └── AdminPanel.jsx    # User management
+┌─────────────────────────────────────────────────────┐
+│                    Frontend (React)                  │
+│         Dashboard · Tasks · Clients · Invoices       │
+│              Payment Page (public, no auth)           │
+└───────────────────────┬─────────────────────────────┘
+                        │ HTTP / REST
+┌───────────────────────▼─────────────────────────────┐
+│                  FastAPI Backend                     │
+│  ┌──────────┐  ┌──────────┐  ┌──────────────────┐   │
+│  │ Auth API │  │ CRUD API │  │ Payment Gateway  │   │
+│  │ (JWT)    │  │ (Tasks,  │  │ (Razorpay REST)  │   │
+│  │          │  │ Clients) │  │ + HMAC Webhooks  │   │
+│  └────┬─────┘  └────┬─────┘  └────────┬─────────┘   │
+│       │              │                 │             │
+│  ┌────▼──────────────▼─────────────────▼─────────┐   │
+│  │           Service Layer (Business Logic)       │   │
+│  │  Auto-invoicing · Timer · Cache Invalidation   │   │
+│  └────────────────────┬──────────────────────────┘   │
+└───────────────────────┼─────────────────────────────┘
+           ┌────────────┼────────────┐
+     ┌─────▼─────┐           ┌──────▼──────┐
+     │ PostgreSQL │           │    Redis    │
+     │   (Data)   │           │  (Cache +   │
+     │  Port 5433 │           │  Blacklist) │
+     │            │           │  Port 6379  │
+     └────────────┘           └─────────────┘
 ```
 
 ---
 
-## Quick Start
+## 🚀 Quick Start
 
 ### Prerequisites
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running
+- [Docker](https://docs.docker.com/get-docker/) & Docker Compose
 
-### 1. Clone the repo
+### 1. Clone & Configure
+
 ```bash
-git clone https://github.com/neerajgawane/primetrade-api.git
+git clone https://github.com/your-username/primetrade-api.git
 cd primetrade-api
+cp backend/.env.example backend/.env
+# Edit backend/.env with your Razorpay keys (optional for dev)
 ```
 
-### 2. Start everything with one command
+### 2. Start Everything
+
 ```bash
-docker-compose up --build
+docker-compose up -d
 ```
 
-Docker will automatically:
-1. Start PostgreSQL and wait for it to be healthy
-2. Start Redis and wait for it to be healthy
-3. Build and start the FastAPI backend (creates DB tables automatically)
-4. Build and start the React frontend via nginx
+This starts:
+| Service | Port | Description |
+|:---|:---|:---|
+| **Frontend** | `http://localhost` | React dashboard |
+| **API** | `http://localhost:8000` | FastAPI backend |
+| **API Docs** | `http://localhost:8000/docs` | Swagger UI |
+| **PostgreSQL** | `localhost:5433` | Database |
+| **Redis** | `localhost:6379` | Cache & token store |
 
-### 3. Access the app
+### 3. Create Your Account
 
-| Service | URL |
-|---|---|
-| **Frontend** | http://localhost |
-| **Swagger API Docs** | http://localhost:8000/docs |
-| **ReDoc** | http://localhost:8000/redoc |
-| **Health Check** | http://localhost:8000/health |
+Visit `http://localhost` → Register → Login → Start using!
 
 ---
 
-## API Endpoints
+## 🔑 Environment Variables
 
-### Authentication
+| Variable | Required | Description |
+|:---|:---|:---|
+| `DATABASE_URL` | ✅ | PostgreSQL connection string |
+| `REDIS_URL` | ✅ | Redis connection string |
+| `SECRET_KEY` | ✅ | JWT signing secret (min 32 chars) |
+| `ALGORITHM` | ❌ | JWT algorithm (default: HS256) |
+| `RAZORPAY_KEY_ID` | ⚡ | Razorpay API Key ID |
+| `RAZORPAY_KEY_SECRET` | ⚡ | Razorpay API Secret |
+| `RAZORPAY_WEBHOOK_SECRET` | ⚡ | Webhook signature verification |
+
+⚡ = Required for payment features only
+
+---
+
+## 📋 API Endpoints
+
+### Auth
 | Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| POST | `/api/v1/auth/register` | ❌ | Register new user |
-| POST | `/api/v1/auth/login` | ❌ | Login → get JWT token |
-| POST | `/api/v1/auth/logout` | ✅ | Blacklist token in Redis |
-| GET | `/api/v1/auth/me` | ✅ | Get current user profile |
+|:---|:---|:---|:---|
+| POST | `/api/v1/auth/register` | ❌ | Create account |
+| POST | `/api/v1/auth/login` | ❌ | Get JWT token |
+| POST | `/api/v1/auth/logout` | ✅ | Blacklist token |
+
+### Clients
+| Method | Endpoint | Auth | Description |
+|:---|:---|:---|:---|
+| GET | `/api/v1/clients/` | ✅ | List clients (paginated) |
+| POST | `/api/v1/clients/` | ✅ | Create client |
+| PUT | `/api/v1/clients/{id}` | ✅ | Update client |
+| DELETE | `/api/v1/clients/{id}` | ✅ | Delete client |
 
 ### Tasks
 | Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| GET | `/api/v1/tasks` | ✅ | List tasks (paginated, Redis-cached) |
-| POST | `/api/v1/tasks` | ✅ | Create task |
-| GET | `/api/v1/tasks/{id}` | ✅ | Get specific task |
-| PUT | `/api/v1/tasks/{id}` | ✅ | Update task |
-| DELETE | `/api/v1/tasks/{id}` | ✅ | Delete task |
+|:---|:---|:---|:---|
+| GET | `/api/v1/tasks/` | ✅ | List tasks (paginated) |
+| POST | `/api/v1/tasks/` | ✅ | Create task |
+| POST | `/api/v1/tasks/{id}/start` | ✅ | Start timer |
+| POST | `/api/v1/tasks/{id}/stop` | ✅ | Stop timer |
+| POST | `/api/v1/tasks/{id}/complete` | ✅ | Complete & auto-invoice |
 
-### Admin (admin role required)
+### Invoices
 | Method | Endpoint | Auth | Description |
-|---|---|---|---|
-| GET | `/api/v1/admin/users` | 👑 | List all users |
-| GET | `/api/v1/admin/users/{id}` | 👑 | Get user by ID |
-| PATCH | `/api/v1/admin/users/{id}/role` | 👑 | Promote/demote user |
-| PATCH | `/api/v1/admin/users/{id}/deactivate` | 👑 | Deactivate user |
-| PATCH | `/api/v1/admin/users/{id}/activate` | 👑 | Activate user |
+|:---|:---|:---|:---|
+| GET | `/api/v1/invoices/` | ✅ | List invoices |
+| GET | `/api/v1/invoices/{id}/public` | ❌ | Public invoice view |
+
+### Payments
+| Method | Endpoint | Auth | Description |
+|:---|:---|:---|:---|
+| POST | `/api/v1/payments/create-order/{id}` | ❌ | Create Razorpay order |
+| POST | `/api/v1/payments/webhook` | ❌ | Razorpay webhook (HMAC) |
 
 ---
 
-## Database Schema
-
-```sql
-users
-  id            UUID PRIMARY KEY
-  email         VARCHAR(255) UNIQUE NOT NULL
-  username      VARCHAR(50) UNIQUE NOT NULL
-  password_hash VARCHAR(255) NOT NULL        -- bcrypt, never plain text
-  role          ENUM('user', 'admin')
-  is_active     BOOLEAN DEFAULT true
-  created_at    TIMESTAMP
-  updated_at    TIMESTAMP
-
-tasks
-  id            UUID PRIMARY KEY
-  title         VARCHAR(200) NOT NULL
-  description   TEXT
-  status        ENUM('todo', 'in_progress', 'done')
-  priority      ENUM('low', 'medium', 'high')
-  user_id       UUID REFERENCES users(id) ON DELETE CASCADE
-  created_at    TIMESTAMP
-  updated_at    TIMESTAMP
-```
-
----
-
-## Security Features
-
-- ✅ Passwords hashed with **bcrypt** — never stored plain text
-- ✅ JWT tokens signed with **HMAC-SHA256**
-- ✅ Logout **blacklists tokens in Redis** — immediate invalidation
-- ✅ Input validation via **Pydantic** — type checking + custom rules
-- ✅ Generic login errors — prevents user enumeration attacks
-- ✅ Role-based access on every protected endpoint
-- ✅ Non-root Docker user
-
----
-
-## Caching Strategy
-
-Task list queries are cached in Redis for 5 minutes using the **Cache-Aside pattern**:
-1. Request comes in → check Redis first
-2. Cache miss → query PostgreSQL → store result in Redis
-3. On any write (create/update/delete) → invalidate related cache keys
-
-This reduces database load by ~80% for read-heavy workloads.
-
----
-
-## Running Tests
+## 🧪 Running Tests
 
 ```bash
-cd backend
-pip install pytest httpx
-pytest tests/ -v
+docker exec primepay_api pytest tests/ -v
 ```
 
 ---
 
-## Create First Admin
+## 🔒 Security
 
-After registering via the UI, promote yourself to admin:
-
-```bash
-docker exec -it primetrade_db psql -U primetrade -d primetrade_db \
-  -c "UPDATE users SET role='admin' WHERE email='your@email.com';"
-```
-
-Then log out and back in — the **👑 Admin Panel** button will appear.
+- **Passwords**: Hashed with bcrypt (via Passlib)
+- **JWT**: Tokens with configurable expiry + Redis blacklisting on logout
+- **Webhooks**: HMAC-SHA256 signature verification on raw request bytes
+- **Multi-tenancy**: All queries scoped to `user_id` at service layer
+- **Financial data**: Amounts stored as integers (paise) to prevent float errors
 
 ---
 
-## Stopping the App
+## 📁 Project Structure
 
-```bash
-docker-compose down        # stop containers
-docker-compose down -v     # stop + delete all data
+```
+primetrade-api/
+├── backend/
+│   ├── app/
+│   │   ├── api/v1/          # Route handlers
+│   │   ├── core/            # Config, DB, Redis, Security
+│   │   ├── models/          # SQLAlchemy models
+│   │   ├── schemas/         # Pydantic schemas
+│   │   └── services/        # Business logic layer
+│   ├── alembic/             # Database migrations
+│   ├── tests/               # Pytest test suite
+│   ├── Dockerfile
+│   └── requirements.txt
+├── frontend/
+│   ├── src/
+│   │   ├── pages/           # Dashboard, Tasks, Invoices, etc.
+│   │   ├── components/      # Layout, shared components
+│   │   ├── services/        # API client (Axios)
+│   │   └── context/         # Auth context
+│   └── Dockerfile
+└── docker-compose.yml
 ```
 
 ---
 
-## Postman Collection
+## 📝 License
 
-Import `postman/PrimeTrade_API.postman_collection.json` into Postman.
-Run **Login** first — it auto-saves the token so all other requests work instantly.
+MIT © 2026

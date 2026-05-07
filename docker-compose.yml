@@ -1,9 +1,7 @@
-version: "3.9"
-
 services:
   db:
     image: postgres:16-alpine
-    container_name: primetrade_db
+    container_name: primepay_db
     environment:
       POSTGRES_USER: primetrade
       POSTGRES_PASSWORD: primetrade123
@@ -11,7 +9,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "5433:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U primetrade -d primetrade_db"]
       interval: 10s
@@ -20,7 +18,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: primetrade_redis
+    container_name: primepay_redis
     ports:
       - "6379:6379"
     healthcheck:
@@ -33,14 +31,12 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: primetrade_api
+    container_name: primepay_api
+    env_file:
+      - ./backend/.env
     environment:
       DATABASE_URL: postgresql://primetrade:primetrade123@db:5432/primetrade_db
       REDIS_URL: redis://redis:6379
-      SECRET_KEY: change-this-to-a-random-secret-in-production-min-32-chars
-      ALGORITHM: HS256
-      ACCESS_TOKEN_EXPIRE_MINUTES: 30
-      DEBUG: "false"
     ports:
       - "8000:8000"
     depends_on:
@@ -56,7 +52,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: primetrade_frontend
+    container_name: primepay_frontend
     ports:
       - "80:80"
     depends_on:

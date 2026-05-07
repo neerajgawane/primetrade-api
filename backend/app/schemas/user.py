@@ -39,6 +39,8 @@ class UserResponse(BaseModel):
     username: str
     role: UserRole
     is_active: bool
+    auth_provider: str = "local"
+    avatar_url: str | None = None
     created_at: datetime
     model_config = {"from_attributes": True}
 

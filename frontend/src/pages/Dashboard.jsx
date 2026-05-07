@@ -1,158 +1,196 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
-import { taskService } from '../services/api'
+import { dashboardService } from '../services/api'
 
-const STATUS_LABELS = { todo: 'To Do', in_progress: 'In Progress', done: 'Done' }
-const PRIORITY_COLORS = { low: '#22c55e', medium: '#f59e0b', high: '#ef4444' }
-const STATUS_COLORS = { todo: '#94a3b8', in_progress: '#6366f1', done: '#22c55e' }
+function formatPaise(p) { return p ? `₹${(p / 100).toLocaleString('en-IN')}` : '₹0' }
+function formatTime(sec) {
+  if (!sec) return '0h 0m'
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60)
+  return `${h}h ${m}m`
+}
 
 export default function Dashboard() {
-  const { user, logout, isAdmin } = useAuth()
-  const navigate = useNavigate()
-  const [tasks, setTasks] = useState([])
-  const [pagination, setPagination] = useState({ page: 1, total: 0, total_pages: 1 })
+  const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [msg, setMsg] = useState({ text: '', error: false })
-  const [showModal, setShowModal] = useState(false)
-  const [editingTask, setEditingTask] = useState(null)
-  const [form, setForm] = useState({ title: '', description: '', status: 'todo', priority: 'medium' })
-  const [saving, setSaving] = useState(false)
+  const navigate = useNavigate()
 
-  const flash = (text, error = false) => { setMsg({ text, error }); setTimeout(() => setMsg({ text: '', error: false }), 3000) }
-
-  const fetchTasks = useCallback(async (page = 1) => {
-    setLoading(true)
-    try {
-      const res = await taskService.list(page)
-      const d = res.data.data
-      setTasks(d.tasks); setPagination({ page: d.page, total: d.total, total_pages: d.total_pages })
-    } catch { flash('Failed to load tasks', true) }
-    finally { setLoading(false) }
+  useEffect(() => {
+    dashboardService.getStats()
+      .then(r => setStats(r.data.data))
+      .catch(() => {})
+      .finally(() => setLoading(false))
   }, [])
 
-  useEffect(() => { fetchTasks() }, [fetchTasks])
+  if (loading) return (
+    <div style={s.skeleton}>
+      {[...Array(5)].map((_, i) => <div key={i} style={s.skeletonCard} />)}
+    </div>
+  )
 
-  const openCreate = () => { setEditingTask(null); setForm({ title: '', description: '', status: 'todo', priority: 'medium' }); setShowModal(true) }
-  const openEdit = (t) => { setEditingTask(t); setForm({ title: t.title, description: t.description || '', status: t.status, priority: t.priority }); setShowModal(true) }
+  const cards = [
+    { label: 'Total Earnings', value: formatPaise(stats?.total_earnings), color: '#34d399', icon: '↗', change: '+12.5%' },
+    { label: 'Pending', value: formatPaise(stats?.pending_earnings), color: '#fbbf24', icon: '⏳', change: 'Awaiting' },
+    { label: 'Clients', value: stats?.total_clients || 0, color: '#60a5fa', icon: '●', sub: 'Active accounts' },
+    { label: 'Tasks', value: stats?.active_tasks || 0, color: '#a78bfa', icon: '◆', sub: `${stats?.completed_tasks || 0} completed` },
+    { label: 'Invoices', value: `${stats?.paid_invoices || 0}/${stats?.total_invoices || 0}`, color: '#818cf8', icon: '■', sub: 'Paid / Total' },
+    { label: 'Time Tracked', value: formatTime(stats?.total_time_tracked), color: '#f472b6', icon: '◎', sub: 'All tasks' },
+  ]
 
-  const saveTask = async () => {
-    if (!form.title.trim()) return flash('Title is required', true)
-    setSaving(true)
-    try {
-      if (editingTask) { await taskService.update(editingTask.id, form); flash('Task updated') }
-      else { await taskService.create(form); flash('Task created') }
-      setShowModal(false); fetchTasks(pagination.page)
-    } catch (err) { flash(err.response?.data?.detail || 'Failed to save', true) }
-    finally { setSaving(false) }
-  }
-
-  const deleteTask = async (id) => {
-    if (!confirm('Delete this task?')) return
-    try { await taskService.delete(id); flash('Task deleted'); fetchTasks(pagination.page) }
-    catch { flash('Failed to delete', true) }
-  }
+  const actions = [
+    { label: 'New Client', desc: 'Add a billing client', icon: '+', path: '/clients', gradient: 'linear-gradient(135deg, #1e3a5f, #1a2e4a)' },
+    { label: 'New Task', desc: 'Create billable work', icon: '✓', path: '/tasks', gradient: 'linear-gradient(135deg, #2d1b4e, #1f1635)' },
+    { label: 'Invoices', desc: 'View & share links', icon: '→', path: '/invoices', gradient: 'linear-gradient(135deg, #1b3a2f, #152e25)' },
+  ]
 
   return (
-    <div style={s.page}>
-      <nav style={s.nav}>
-        <span style={s.logo}>⚡ PrimeTrade</span>
-        <div style={s.navRight}>
-          {isAdmin && <button onClick={() => navigate('/admin')} style={s.navBtn}>👑 Admin Panel</button>}
-          <span style={s.navUser}>👤 {user?.username}</span>
-          <span style={{ ...s.badge, background: user?.role === 'admin' ? '#7c3aed' : '#1e40af' }}>{user?.role}</span>
-          <button onClick={async () => { await logout(); navigate('/login') }} style={s.logoutBtn}>Logout</button>
+    <div style={{ animation: 'fadeIn 0.4s ease' }}>
+      {/* Header */}
+      <div style={s.header}>
+        <div>
+          <h1 style={s.title}>Dashboard</h1>
+          <p style={s.subtitle}>Your freelance business at a glance</p>
         </div>
-      </nav>
-      <div style={s.content}>
-        <div style={s.header}>
-          <div><h1 style={s.h1}>My Tasks</h1><p style={s.sub}>{pagination.total} tasks</p></div>
-          <button onClick={openCreate} style={s.primaryBtn}>+ New Task</button>
+        <div style={s.headerBadge}>
+          <span style={s.liveDot} />
+          <span style={s.liveText}>Live</span>
         </div>
-        {msg.text && <div style={msg.error ? s.errorBanner : s.successBanner}>{msg.text}</div>}
-        {loading ? <p style={{ color:'#64748b',textAlign:'center',padding:'3rem' }}>Loading...</p>
-          : tasks.length === 0 ? <div style={s.emptyCard}><p style={{ fontSize:'2rem',margin:0 }}>📋</p><p style={{ color:'#94a3b8',margin:'0.5rem 0 0' }}>No tasks yet. Create your first one!</p></div>
-          : <div style={s.taskGrid}>{tasks.map(task => (
-            <div key={task.id} style={s.taskCard}>
-              <div style={s.taskTop}>
-                <span style={{ ...s.dot, background: PRIORITY_COLORS[task.priority] }} />
-                <span style={{ ...s.statusBadge, background: STATUS_COLORS[task.status]+'22', color: STATUS_COLORS[task.status] }}>{STATUS_LABELS[task.status]}</span>
-              </div>
-              <h3 style={s.taskTitle}>{task.title}</h3>
-              {task.description && <p style={s.taskDesc}>{task.description}</p>}
-              <div style={s.taskMeta}>
-                <span style={{ color:'#64748b',fontSize:'0.75rem' }}>{new Date(task.created_at).toLocaleDateString()}</span>
-                <div style={{ display:'flex',gap:'0.5rem' }}>
-                  <button onClick={() => openEdit(task)} style={s.editBtn}>Edit</button>
-                  <button onClick={() => deleteTask(task.id)} style={s.deleteBtn}>Delete</button>
-                </div>
-              </div>
-            </div>
-          ))}</div>}
-        {pagination.total_pages > 1 && (
-          <div style={s.pagination}>
-            <button onClick={() => fetchTasks(pagination.page - 1)} disabled={pagination.page === 1} style={s.pageBtn}>← Prev</button>
-            <span style={{ color:'#94a3b8' }}>Page {pagination.page} of {pagination.total_pages}</span>
-            <button onClick={() => fetchTasks(pagination.page + 1)} disabled={pagination.page === pagination.total_pages} style={s.pageBtn}>Next →</button>
-          </div>
-        )}
       </div>
-      {showModal && (
-        <div style={s.overlay} onClick={() => setShowModal(false)}>
-          <div style={s.modal} onClick={e => e.stopPropagation()}>
-            <h2 style={s.modalTitle}>{editingTask ? 'Edit Task' : 'New Task'}</h2>
-            <label style={s.label}>Title *</label>
-            <input style={s.input} value={form.title} onChange={e => setForm({...form,title:e.target.value})} placeholder="Task title" />
-            <label style={s.label}>Description</label>
-            <textarea style={{ ...s.input, height:'80px', resize:'vertical' }} value={form.description} onChange={e => setForm({...form,description:e.target.value})} placeholder="Optional" />
-            <div style={{ display:'flex',gap:'1rem' }}>
-              <div style={{ flex:1 }}><label style={s.label}>Priority</label><select style={s.input} value={form.priority} onChange={e => setForm({...form,priority:e.target.value})}><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select></div>
-              <div style={{ flex:1 }}><label style={s.label}>Status</label><select style={s.input} value={form.status} onChange={e => setForm({...form,status:e.target.value})}><option value="todo">To Do</option><option value="in_progress">In Progress</option><option value="done">Done</option></select></div>
+
+      {/* Stats Grid */}
+      <div style={s.statsGrid}>
+        {cards.map((c, i) => (
+          <div key={i} style={{ ...s.statCard, animationDelay: `${i * 0.06}s` }}>
+            <div style={s.statTop}>
+              <span style={s.statLabel}>{c.label}</span>
+              {c.change && <span style={{ ...s.statChange, color: c.color }}>{c.change}</span>}
             </div>
-            <div style={{ display:'flex',gap:'0.75rem',justifyContent:'flex-end',marginTop:'1.5rem' }}>
-              <button onClick={() => setShowModal(false)} style={s.cancelBtn}>Cancel</button>
-              <button onClick={saveTask} disabled={saving} style={s.primaryBtn}>{saving ? 'Saving...' : editingTask ? 'Update' : 'Create'}</button>
+            <div style={{ ...s.statValue, color: c.color }}>{c.value}</div>
+            {c.sub && <span style={s.statSub}>{c.sub}</span>}
+            <div style={{ ...s.statBar, background: `${c.color}15` }}>
+              <div style={{ ...s.statBarFill, background: c.color, width: `${Math.min(100, Math.random() * 60 + 30)}%` }} />
             </div>
           </div>
-        </div>
+        ))}
+      </div>
+
+      {/* Quick Actions */}
+      <div style={s.sectionHeader}>
+        <h2 style={s.sectionTitle}>Quick Actions</h2>
+      </div>
+      <div style={s.actionsGrid}>
+        {actions.map((a, i) => (
+          <button key={i} onClick={() => navigate(a.path)} style={{ ...s.actionCard, background: a.gradient }}>
+            <div style={s.actionIcon}>{a.icon}</div>
+            <div>
+              <div style={s.actionLabel}>{a.label}</div>
+              <div style={s.actionDesc}>{a.desc}</div>
+            </div>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginLeft: 'auto', opacity: 0.4 }}><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </button>
+        ))}
+      </div>
+
+      {/* Recent Invoices */}
+      {stats?.recent_invoices?.length > 0 && (
+        <>
+          <div style={s.sectionHeader}>
+            <h2 style={s.sectionTitle}>Recent Invoices</h2>
+            <button onClick={() => navigate('/invoices')} style={s.viewAllBtn}>View all →</button>
+          </div>
+          <div style={s.recentList}>
+            {stats.recent_invoices.map((inv, i) => (
+              <div key={i} style={s.recentItem}>
+                <div style={s.recentLeft}>
+                  <span style={s.recentInvNum}>{inv.invoice_number}</span>
+                  <span style={s.recentDate}>{new Date(inv.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</span>
+                </div>
+                <span style={s.recentAmount}>{formatPaise(inv.amount)}</span>
+                <span style={{
+                  ...s.recentStatus,
+                  color: inv.status === 'paid' ? 'var(--success)' : 'var(--warning)',
+                  background: inv.status === 'paid' ? 'var(--success-bg)' : 'var(--warning-bg)',
+                }}>
+                  {inv.status === 'paid' ? '● Paid' : '○ Pending'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </div>
   )
 }
 
 const s = {
-  page:{ minHeight:'100vh',background:'#0f172a' },
-  nav:{ background:'#1e293b',padding:'0 2rem',height:'60px',display:'flex',alignItems:'center',justifyContent:'space-between',borderBottom:'1px solid #334155' },
-  logo:{ color:'#6366f1',fontWeight:700,fontSize:'1.1rem' },
-  navRight:{ display:'flex',alignItems:'center',gap:'0.75rem' },
-  navBtn:{ background:'#312e81',color:'#a5b4fc',border:'none',borderRadius:'6px',padding:'0.4rem 0.8rem',cursor:'pointer',fontSize:'0.85rem' },
-  navUser:{ color:'#94a3b8',fontSize:'0.9rem' },
-  badge:{ color:'#fff',borderRadius:'4px',padding:'0.2rem 0.5rem',fontSize:'0.75rem',fontWeight:600 },
-  logoutBtn:{ background:'transparent',color:'#ef4444',border:'1px solid #ef4444',borderRadius:'6px',padding:'0.35rem 0.75rem',cursor:'pointer',fontSize:'0.85rem' },
-  content:{ maxWidth:'900px',margin:'0 auto',padding:'2rem 1rem' },
-  header:{ display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'1.5rem' },
-  h1:{ color:'#f1f5f9',margin:0,fontSize:'1.75rem' },
-  sub:{ color:'#64748b',margin:'0.25rem 0 0',fontSize:'0.9rem' },
-  primaryBtn:{ background:'#6366f1',color:'#fff',border:'none',borderRadius:'8px',padding:'0.65rem 1.25rem',cursor:'pointer',fontSize:'0.95rem',fontWeight:600 },
-  errorBanner:{ background:'#7f1d1d',color:'#fca5a5',padding:'0.75rem 1rem',borderRadius:'8px',marginBottom:'1rem' },
-  successBanner:{ background:'#14532d',color:'#86efac',padding:'0.75rem 1rem',borderRadius:'8px',marginBottom:'1rem' },
-  emptyCard:{ textAlign:'center',background:'#1e293b',borderRadius:'12px',padding:'3rem',border:'2px dashed #334155' },
-  taskGrid:{ display:'grid',gridTemplateColumns:'repeat(auto-fill, minmax(260px, 1fr))',gap:'1rem' },
-  taskCard:{ background:'#1e293b',borderRadius:'10px',padding:'1.25rem',border:'1px solid #334155',display:'flex',flexDirection:'column',gap:'0.5rem' },
-  taskTop:{ display:'flex',alignItems:'center',justifyContent:'space-between' },
-  dot:{ width:'10px',height:'10px',borderRadius:'50%',display:'inline-block' },
-  statusBadge:{ fontSize:'0.75rem',fontWeight:600,padding:'0.2rem 0.6rem',borderRadius:'20px' },
-  taskTitle:{ color:'#f1f5f9',margin:0,fontSize:'1rem',fontWeight:600 },
-  taskDesc:{ color:'#64748b',margin:0,fontSize:'0.85rem',lineHeight:1.5 },
-  taskMeta:{ display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:'0.25rem' },
-  editBtn:{ background:'#1d4ed8',color:'#93c5fd',border:'none',borderRadius:'5px',padding:'0.3rem 0.7rem',cursor:'pointer',fontSize:'0.8rem' },
-  deleteBtn:{ background:'#7f1d1d',color:'#fca5a5',border:'none',borderRadius:'5px',padding:'0.3rem 0.7rem',cursor:'pointer',fontSize:'0.8rem' },
-  pagination:{ display:'flex',justifyContent:'center',alignItems:'center',gap:'1rem',marginTop:'2rem' },
-  pageBtn:{ background:'#1e293b',color:'#94a3b8',border:'1px solid #334155',borderRadius:'6px',padding:'0.5rem 1rem',cursor:'pointer' },
-  overlay:{ position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:100 },
-  modal:{ background:'#1e293b',borderRadius:'12px',padding:'2rem',width:'100%',maxWidth:'480px',border:'1px solid #334155' },
-  modalTitle:{ color:'#f1f5f9',margin:'0 0 1.5rem',fontSize:'1.25rem' },
-  label:{ display:'block',color:'#94a3b8',fontSize:'0.85rem',marginBottom:'0.4rem',marginTop:'1rem' },
-  input:{ width:'100%',padding:'0.65rem 0.75rem',background:'#0f172a',border:'1px solid #334155',borderRadius:'8px',color:'#f1f5f9',fontSize:'0.9rem',boxSizing:'border-box' },
-  cancelBtn:{ background:'transparent',color:'#94a3b8',border:'1px solid #334155',borderRadius:'8px',padding:'0.65rem 1.25rem',cursor:'pointer' },
+  skeleton: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' },
+  skeletonCard: {
+    height: '120px', borderRadius: 'var(--radius-lg)', background: 'var(--bg-card)',
+    animation: 'shimmer 1.5s infinite', backgroundSize: '200% 100%',
+    backgroundImage: 'linear-gradient(90deg, var(--bg-card) 0%, var(--bg-elevated) 50%, var(--bg-card) 100%)',
+  },
+
+  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2rem' },
+  title: { fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.03em' },
+  subtitle: { color: 'var(--text-tertiary)', fontSize: '0.9rem', marginTop: '0.25rem' },
+  headerBadge: {
+    display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.35rem 0.75rem',
+    borderRadius: '20px', background: 'rgba(52, 211, 153, 0.08)', border: '1px solid rgba(52, 211, 153, 0.15)',
+  },
+  liveDot: {
+    width: '6px', height: '6px', borderRadius: '50%', background: '#34d399',
+    animation: 'pulse-ring 2s infinite',
+  },
+  liveText: { fontSize: '0.75rem', fontWeight: 600, color: '#34d399' },
+
+  statsGrid: {
+    display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem', marginBottom: '2.5rem',
+  },
+  statCard: {
+    background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', padding: '1.25rem',
+    border: '1px solid var(--border-primary)', animation: 'fadeIn 0.4s ease backwards',
+    transition: 'var(--transition-fast)',
+  },
+  statTop: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' },
+  statLabel: { fontSize: '0.78rem', fontWeight: 500, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' },
+  statChange: { fontSize: '0.72rem', fontWeight: 600 },
+  statValue: { fontSize: '1.6rem', fontWeight: 700, letterSpacing: '-0.02em', marginBottom: '0.15rem' },
+  statSub: { fontSize: '0.75rem', color: 'var(--text-tertiary)' },
+  statBar: { height: '3px', borderRadius: '2px', marginTop: '0.75rem', overflow: 'hidden' },
+  statBarFill: { height: '100%', borderRadius: '2px', transition: 'width 1s ease' },
+
+  sectionHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' },
+  sectionTitle: { fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' },
+  viewAllBtn: {
+    background: 'transparent', border: 'none', color: 'var(--text-accent)', fontSize: '0.82rem',
+    cursor: 'pointer', fontWeight: 500,
+  },
+
+  actionsGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.75rem', marginBottom: '2.5rem' },
+  actionCard: {
+    display: 'flex', alignItems: 'center', gap: '0.85rem', padding: '1rem 1.25rem',
+    borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-primary)',
+    cursor: 'pointer', transition: 'var(--transition-fast)', color: 'var(--text-primary)',
+    textAlign: 'left', fontSize: 'inherit', fontFamily: 'inherit',
+  },
+  actionIcon: {
+    width: '36px', height: '36px', borderRadius: '10px',
+    background: 'rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontSize: '1.1rem', fontWeight: 700, flexShrink: 0,
+  },
+  actionLabel: { fontSize: '0.9rem', fontWeight: 600 },
+  actionDesc: { fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '0.1rem' },
+
+  recentList: {
+    background: 'var(--bg-card)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-primary)',
+    overflow: 'hidden',
+  },
+  recentItem: {
+    display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.85rem 1.25rem',
+    borderBottom: '1px solid var(--border-subtle)', transition: 'var(--transition-fast)',
+  },
+  recentLeft: { display: 'flex', flexDirection: 'column', flex: 1 },
+  recentInvNum: { fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'monospace' },
+  recentDate: { fontSize: '0.72rem', color: 'var(--text-tertiary)' },
+  recentAmount: { fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'monospace' },
+  recentStatus: { fontSize: '0.72rem', fontWeight: 600, padding: '0.2rem 0.6rem', borderRadius: '20px' },
 }
